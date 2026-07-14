@@ -2,7 +2,7 @@
 
 All notable changes to ProcessKit are documented in this file.
 
-## [Unreleased]
+## [0.1.0-beta.1] - 2026-07-14
 
 First cut, promoted from RepoPrompt's internal `RepoPromptCore/ProcessCore`
 target after incubation (local incubation → second-consumer proof →
