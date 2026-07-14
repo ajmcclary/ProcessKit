@@ -1,0 +1,59 @@
+{
+  "" : {
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessKit-primary.dia",
+    "emit-module-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessKit-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessKit-primary-emit-module.dia",
+    "pch" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessKit-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessKit-primary.swiftdeps"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Sources/ProcessKit/FDWriteSupport.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FDWriteSupport~partial.swiftmodule"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Sources/ProcessKit/FileHandleChunkChannel.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/FileHandleChunkChannel~partial.swiftmodule"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Sources/ProcessKit/ProcessLauncher.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessLauncher~partial.swiftmodule"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Sources/ProcessKit/ProcessTermination.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTermination~partial.swiftmodule"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Sources/ProcessKit/ProcessTerminationPolicy.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKit-t.build/Objects-normal/arm64/ProcessTerminationPolicy~partial.swiftmodule"
+  }
+}

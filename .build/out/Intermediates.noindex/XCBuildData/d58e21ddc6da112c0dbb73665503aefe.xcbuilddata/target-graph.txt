@@ -1,0 +1,7 @@
+Target dependency graph (3 targets)
+Target 'AllExcludingTests' in project 'Aggregate'
+➜ Explicit dependency on target 'ProcessKit-product' in project 'ProcessKit'
+➜ Explicit dependency on target 'ProcessKit' in project 'ProcessKit'
+Target 'ProcessKit-product' in project 'ProcessKit'
+➜ Explicit dependency on target 'ProcessKit' in project 'ProcessKit'
+Target 'ProcessKit' in project 'ProcessKit' (no dependencies)

@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests-primary.dia",
+    "emit-module-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests-primary-emit-module.dia",
+    "pch" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests-primary.swiftdeps"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/DerivedSources/test_entry_point.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/test_entry_point~partial.swiftmodule"
+  },
+  "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/Tests/ProcessKitTests/ProcessKitTests.swift" : {
+    "const-values" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.swiftconstvalues",
+    "dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.d",
+    "diagnostics" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.dia",
+    "index-unit-output-path" : "/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.o",
+    "llvm-bc" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.bc",
+    "object" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.o",
+    "swift-dependencies" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests.swiftdeps",
+    "swiftmodule" : "/Users/ajmcclary/Dev/CodeEditor/packages/ProcessKit/.build/out/Intermediates.noindex/ProcessKit.build/Debug/ProcessKitTests-p.build/Objects-normal/arm64/ProcessKitTests~partial.swiftmodule"
+  }
+}
