@@ -2,6 +2,11 @@
 
 All notable changes to ProcessKit are documented in this file.
 
+## [0.1.0-beta.2] - 2026-07-14
+
+- Remove stray SwiftPM build artifacts (`.build/`) that were accidentally
+  committed in the first cut; add `.gitignore`. No source changes.
+
 ## [0.1.0-beta.1] - 2026-07-14
 
 First cut, promoted from RepoPrompt's internal `RepoPromptCore/ProcessCore`

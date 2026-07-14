@@ -1,4 +1,0 @@
-module ProcessKit {
-header "ProcessKit-Swift.h"
-export *
-}
