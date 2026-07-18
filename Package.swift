@@ -12,6 +12,9 @@
 ///   policy (no mutable application-wide termination mode).
 /// - `FileHandleChunkChannel` — ordered, single-consumer `AsyncStream<Data>`
 ///   over `readabilityHandler` chunks.
+/// - `ProcessPipeReader` — single-use owner of one pipe's read side:
+///   preflight, `readabilityHandler`, FIFO channel, consumer task, ordered
+///   chunk + at-most-once EOF callbacks, idempotent cancel.
 /// - `FDWriteSupport` — low-level FD write seam (EPIPE/EINTR/EBADF aware).
 ///
 /// Deliberately OUT of scope: protocol framing (LSP Content-Length lives in
