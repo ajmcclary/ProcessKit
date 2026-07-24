@@ -17,11 +17,35 @@ Neutral POSIX process primitives shared by
 - **`FDWriteSupport`** — low-level FD write seam (EPIPE/EINTR/EBADF aware,
   no-SIGPIPE configuration).
 
-Deliberately **out** of scope: protocol framing (LSP Content-Length lives
-in CodeEditorLSP's `LSPFrameCodec`; NDJSON `LineFramer` lives in
-RepoPromptCore), executable resolution and login-shell PATH policy,
-environment composition policy, and application logging (functions accept
-a plain `(String) -> Void` logger).
+## `ProcessStreamFraming` (separate product)
+
+The neutral byte-framing layer that sits directly above those chunk
+streams, promoted out of RepoPromptCore on 2026-07-24 so a second package
+([CodexAppServerKit](https://github.com/ajmcclary/CodexAppServerKit))
+could share one implementation instead of copying it:
+
+- **`LineFramer`** — NDJSON line splitting that tracks JSON string
+  state, so literal newlines inside string values do not split a record.
+  Quote tracking only engages for JSON candidates (`{`/`[`); carry limits
+  are configurable and overflow is reported as a diagnostic with a
+  retained tail.
+- **`JSONStreamFramer`** — string/escape-aware brace-depth splitting of
+  concatenated top-level JSON objects, returning both the frames and the
+  unconsumed remainder.
+- **Raw-byte helpers** — `appendTail`, `makeUTF8Sample`,
+  `isASCIIWhitespace`, `trimmedASCIIWhitespace`, and
+  `repairJSONStringControlCharacters`.
+
+It is a **separate target and product**: it has no dependency on the
+`ProcessKit` target, and consumers that only spawn and reap processes
+never link it.
+
+Deliberately **out** of scope: *protocol* framing and decoding — LSP
+Content-Length lives in CodeEditorLSP's `LSPFrameCodec`, and the
+Codex/Claude JSON-RPC decoders live in their provider packages
+(`CodexAppServerKit.CodexJSONStreamDecoder`) — plus executable resolution
+and login-shell PATH policy, environment composition policy, and
+application logging (functions accept a plain `(String) -> Void` logger).
 
 ## Requirements
 

@@ -17,11 +17,30 @@
 ///   chunk + at-most-once EOF callbacks, idempotent cancel.
 /// - `FDWriteSupport` — low-level FD write seam (EPIPE/EINTR/EBADF aware).
 ///
-/// Deliberately OUT of scope: protocol framing (LSP Content-Length lives in
-/// CodeEditorLSP's `LSPFrameCodec`; NDJSON `LineFramer` lives in
-/// RepoPromptCore), executable resolution / login-shell PATH policy,
-/// environment composition policy, and application logging (all functions
-/// accept a plain `(String) -> Void` logger).
+/// A second, separately-linkable product carries the neutral byte-framing
+/// layer that sits directly above those chunk streams:
+///
+/// - `ProcessStreamFraming` — NDJSON `LineFramer` (quote/escape-aware line
+///   splitting with carry limits and overflow diagnostics),
+///   `JSONStreamFramer` (concatenated top-level-object splitting), and the
+///   raw-byte helpers `appendTail` / `makeUTF8Sample` /
+///   `isASCIIWhitespace` / `trimmedASCIIWhitespace` /
+///   `repairJSONStringControlCharacters`. Promoted out of RepoPromptCore's
+///   `ProcessCore` target on 2026-07-24 so a second package
+///   (`CodexAppServerKit`) could reach it without duplicating the
+///   implementation; RepoPromptCore re-exports it, so its five in-app
+///   consumers (Claude, ACP, Gemini, Codex exec, CLIProcessRunner) are
+///   unchanged. It is a SEPARATE target/product: the `ProcessKit` product
+///   stays pure process primitives and CodeEditorPlugin links no framing
+///   code it does not use.
+///
+/// Deliberately OUT of scope: *protocol* framing and decoding — LSP
+/// Content-Length lives in CodeEditorLSP's `LSPFrameCodec`, and the
+/// Codex/Claude JSON-RPC decoders live in their provider packages
+/// (`CodexAppServerKit.CodexJSONStreamDecoder`) — plus executable
+/// resolution / login-shell PATH policy, environment composition policy,
+/// and application logging (all functions accept a plain
+/// `(String) -> Void` logger).
 ///
 /// ## Requirements
 ///
@@ -44,6 +63,13 @@ let package = Package(
         .library(
             name: "ProcessKit",
             targets: ["ProcessKit"]
+        ),
+        // Neutral NDJSON/byte framing above the chunk streams. Separate from
+        // the `ProcessKit` product on purpose: consumers that only spawn and
+        // reap processes never link it.
+        .library(
+            name: "ProcessStreamFraming",
+            targets: ["ProcessStreamFraming"]
         )
     ],
     targets: [
@@ -51,9 +77,21 @@ let package = Package(
             name: "ProcessKit",
             swiftSettings: swiftSettings
         ),
+        // Zero dependencies (Foundation only) — deliberately does NOT depend
+        // on the ProcessKit target: framing is pure byte work and must stay
+        // usable without the spawn/lifecycle surface.
+        .target(
+            name: "ProcessStreamFraming",
+            swiftSettings: swiftSettings
+        ),
         .testTarget(
             name: "ProcessKitTests",
             dependencies: ["ProcessKit"],
+            swiftSettings: swiftSettings
+        ),
+        .testTarget(
+            name: "ProcessStreamFramingTests",
+            dependencies: ["ProcessStreamFraming"],
             swiftSettings: swiftSettings
         )
     ]
