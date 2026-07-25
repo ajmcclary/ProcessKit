@@ -2,7 +2,7 @@
 
 Neutral POSIX process primitives shared by
 [RepoPrompt](https://github.com/ajmcclary/RepoPrompt) and
-[CodeEditorPlugin](https://github.com/ajmcclary/CodeEditorPlugin) — the
+[CodeEditorKit](https://github.com/ajmcclary/CodeEditorKit) — the
 "proof-of-two" consumers this package was promoted for.
 
 - **`ProcessLauncher` / `SpawnedProcess`** — `posix_spawnp` launcher with

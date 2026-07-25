@@ -3,7 +3,7 @@
 /// ProcessKit Package Configuration
 ///
 /// Neutral POSIX process primitives shared by RepoPrompt and
-/// CodeEditorPlugin (the "proof-of-two" consumers):
+/// CodeEditorKit (the "proof-of-two" consumers):
 ///
 /// - `ProcessLauncher` / `SpawnedProcess` — posix_spawnp launcher with
 ///   pipe/CLOEXEC/SIGPIPE setup and single-reaper ownership semantics.
@@ -31,7 +31,7 @@
 ///   implementation; RepoPromptCore re-exports it, so its five in-app
 ///   consumers (Claude, ACP, Gemini, Codex exec, CLIProcessRunner) are
 ///   unchanged. It is a SEPARATE target/product: the `ProcessKit` product
-///   stays pure process primitives and CodeEditorPlugin links no framing
+///   stays pure process primitives and CodeEditorKit links no framing
 ///   code it does not use.
 ///
 /// Deliberately OUT of scope: *protocol* framing and decoding — LSP
