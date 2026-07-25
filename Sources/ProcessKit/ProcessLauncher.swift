@@ -97,9 +97,16 @@ public enum ProcessLauncher {
 		posix_spawn_file_actions_addclose(&fileActions, stderrPipe[0])
 		
 		if let workingDirectory {
+			// `posix_spawn_file_actions_addchdir(3)` superseded the `_np`
+			// spelling in macOS 26.0 (same syscall, standardized name); the
+			// package's macOS 27.0 floor makes it unconditionally available,
+			// and the `_np` form now warns as deprecated. The platform list is
+			// unchanged: both spellings are `__API_UNAVAILABLE(ios, tvos,
+			// watchos)`, and this whole file is `#if canImport(AppKit)`, so
+			// only macOS ever compiles it.
 			let result = workingDirectory.withCString { pointer -> Int32 in
 		#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-				return posix_spawn_file_actions_addchdir_np(&fileActions, pointer)
+				return posix_spawn_file_actions_addchdir(&fileActions, pointer)
 		#else
 				return 0
 		#endif

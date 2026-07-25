@@ -50,7 +50,7 @@ application logging (functions accept a plain `(String) -> Void` logger).
 ## Requirements
 
 - Swift 6.3+ (Swift 6 language mode, strict concurrency)
-- macOS 14+. iOS 17+ compiles the module (spawning itself is a macOS
+- macOS 27+. iOS 27+ compiles the module (spawning itself is a macOS
   capability, gated `#if canImport(AppKit)`), so macOS+iOS consumers can
   depend on it unconditionally.
 

@@ -45,7 +45,7 @@
 /// ## Requirements
 ///
 /// - **Swift**: 6.3+ (Swift 6 language mode, strict concurrency)
-/// - **Platforms**: macOS 14+, iOS 17+ (spawning is a macOS capability;
+/// - **Platforms**: macOS 27+, iOS 27+ (spawning is a macOS capability;
 ///   the module compiles on iOS so macOS+iOS consumers can depend on it
 ///   unconditionally)
 
@@ -58,7 +58,10 @@ let swiftSettings: [SwiftSetting] = [
 
 let package = Package(
     name: "ProcessKit",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [
+        .macOS("27.0"),
+        .iOS("27.0")
+    ],
     products: [
         .library(
             name: "ProcessKit",
