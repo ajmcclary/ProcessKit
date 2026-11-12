@@ -9,7 +9,10 @@ import Foundation
 /// (`splitConcatenatedJSONObjectPayloads`) and `CodexAppServerClient`
 /// (`splitConcatenatedJSONObjects`); promoted from the app into ProcessCore
 /// (2026-07-17) as neutral stream-framing machinery alongside `LineFramer`.
-/// The behavior of `frames` is identical to those originals:
+/// The behavior of `frames` is identical to those originals, except that the
+/// scan is byte-wise: the originals compared `Character`s and so missed a `"`,
+/// `{` or `}` that a following combining scalar (accent, vowel sign,
+/// variation selector, emoji modifier) joined into one grapheme.
 /// - Non-UTF-8 or empty input yields no frames.
 /// - Only `{`/`}` delimit frames; a top-level JSON *array* is treated as noise.
 /// - Leading noise (before the first `{`) and inter-frame noise (between a
@@ -38,66 +41,65 @@ public enum JSONStreamFramer {
 	}
 
 	public static func splitConcatenatedObjects(_ data: Data) -> FramingResult {
-		guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
+		// Non-UTF-8 input yields nothing (legacy contract). The scan itself is
+		// byte-wise: `"`, `\`, `{` and `}` are ASCII and never occur inside a
+		// multi-byte UTF-8 sequence, whereas comparing `Character`s misses a
+		// quote or brace that a following combining scalar joins into one
+		// grapheme.
+		guard !data.isEmpty, String(data: data, encoding: .utf8) != nil else {
 			return FramingResult(frames: [], remainder: Data())
 		}
 		var results: [Data] = []
-		var start: String.Index?
+		var start: Data.Index?
 		var depth = 0
 		var inString = false
 		var escaping = false
-		var lastFrameEnd: String.Index?
+		var lastFrameEnd: Data.Index?
 
-		var index = text.startIndex
-		while index < text.endIndex {
-			let character = text[index]
+		for index in data.indices {
+			let byte = data[index]
 			if start == nil {
-				if character == "{" {
+				if byte == 0x7B { // {
 					start = index
 					depth = 1
 					inString = false
 					escaping = false
 				}
-				index = text.index(after: index)
 				continue
 			}
 
 			if inString {
 				if escaping {
 					escaping = false
-				} else if character == "\\" {
+				} else if byte == 0x5C { // \
 					escaping = true
-				} else if character == "\"" {
+				} else if byte == 0x22 { // "
 					inString = false
 				}
 			} else {
-				if character == "\"" {
+				if byte == 0x22 {
 					inString = true
-				} else if character == "{" {
+				} else if byte == 0x7B {
 					depth += 1
-				} else if character == "}" {
+				} else if byte == 0x7D { // }
 					depth -= 1
 					if depth == 0, let segmentStart = start {
-						let segmentEnd = text.index(after: index)
-						let segment = String(text[segmentStart..<segmentEnd])
-						if let segmentData = segment.data(using: .utf8), !segmentData.isEmpty {
-							results.append(segmentData)
-						}
+						let segmentEnd = index + 1
+						results.append(data.subdata(in: segmentStart..<segmentEnd))
 						start = nil
 						lastFrameEnd = segmentEnd
 					}
 				}
 			}
-			index = text.index(after: index)
 		}
 
 		let remainder: Data
 		if let openStart = start {
 			// Unterminated trailing object: everything from its `{` to end.
-			remainder = String(text[openStart..<text.endIndex]).data(using: .utf8) ?? Data()
-		} else if let lastFrameEnd, lastFrameEnd < text.endIndex {
+			remainder = data.subdata(in: openStart..<data.endIndex)
+		} else if let lastFrameEnd, lastFrameEnd < data.endIndex {
 			// Trailing noise after the last complete frame.
-			remainder = String(text[lastFrameEnd..<text.endIndex]).data(using: .utf8) ?? Data()
+			remainder = data.subdata(in: lastFrameEnd..<data.endIndex)
 		} else {
 			remainder = Data()
 		}

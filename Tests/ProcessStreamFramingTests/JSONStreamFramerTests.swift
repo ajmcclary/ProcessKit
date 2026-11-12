@@ -101,6 +101,58 @@ final class JSONStreamFramerTests: XCTestCase {
 		XCTAssertEqual(remainder, #"{"b":"#)
 	}
 
+	// MARK: Combining scalars next to structural bytes
+
+	/// A string value that begins with a combining mark makes `"` + mark one
+	/// grapheme; the framer must still see the quote.
+	func testQuoteFollowedByCombiningScalarStillDelimitsString() {
+		for mark in ["\u{0301}", "\u{093F}", "\u{FE0F}", "\u{1F3FD}", "\u{200D}"] {
+			let first = "{\"text\":\"\(mark)x\"}"
+			let (frames, remainder) = split(first + #"{"b":1}"#)
+			XCTAssertEqual(frames, [first, #"{"b":1}"#], "mark U+\(String(mark.unicodeScalars.first!.value, radix: 16))")
+			XCTAssertEqual(remainder, "")
+		}
+	}
+
+	func testClosingQuoteFollowedByCombiningScalarStillClosesString() {
+		let first = "{\"a\":\"x\"\u{0301}}"   // not valid JSON, but the brace must still close
+		let (frames, remainder) = split(first + #"{"b":1}"#)
+		XCTAssertEqual(frames, [first, #"{"b":1}"#])
+		XCTAssertEqual(remainder, "")
+	}
+
+	func testBraceFollowedByCombiningScalarStillOpensAndClosesFrame() {
+		let first = "{\u{0301}\"a\":1}\u{0301}"
+		let (frames, remainder) = split(first + #"{"b":1}"#)
+		XCTAssertEqual(frames, ["{\u{0301}\"a\":1}", #"{"b":1}"#])
+		XCTAssertEqual(remainder, "")
+	}
+
+	func testMultibyteTextFramesAndRemainderAreByteExact() {
+		let first = #"{"t":"héllo 🙂 नमस्ते \"q\" }{"}"#
+		let tail = #"{"open":"ü"#
+		let (frames, remainder) = split(first + "ß" + #"{"b":"ç"}"# + tail)
+		XCTAssertEqual(frames, [first, #"{"b":"ç"}"#])
+		XCTAssertEqual(remainder, tail)
+
+		let (_, noise) = split(#"{"a":1}"# + "é🙂")
+		XCTAssertEqual(noise, "é🙂")
+	}
+
+	func testCRLFBetweenFramesIsInterFrameNoise() {
+		let (frames, remainder) = split("{\"a\":\"x\r\ny\"}\r\n{\"b\":1}\r\n")
+		XCTAssertEqual(frames, ["{\"a\":\"x\r\ny\"}", #"{"b":1}"#])
+		XCTAssertEqual(remainder, "\r\n")
+	}
+
+	func testInvalidUTF8AnywhereStillYieldsNoFrames() {
+		var data = Data(#"{"a":1}"#.utf8)
+		data.append(0xFF)
+		let r = JSONStreamFramer.splitConcatenatedObjects(data)
+		XCTAssertTrue(r.frames.isEmpty)
+		XCTAssertTrue(r.remainder.isEmpty)
+	}
+
 	/// The two former callers apply DIFFERENT gates over these frames. Leading
 	/// noise yields exactly one frame whose byte length differs from the input:
 	/// Claude's `segments.count > 1` gate is FALSE (no-op) while Codex's
