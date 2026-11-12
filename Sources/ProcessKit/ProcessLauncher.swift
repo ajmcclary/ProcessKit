@@ -11,8 +11,14 @@ import Darwin.POSIX.fcntl
 /// PID (via `ProcessTermination.waitForTermination` /
 /// `terminateAndReap`); reaping from multiple places races `waitpid` and
 /// can mis-attribute exit codes. The same owner is responsible for the
-/// pipe `FileHandle`s. `stdinDescriptor` duplicates `stdin`'s file
-/// descriptor for use with `FDWriteSupport.writeAll(_:to:)`.
+/// pipe `FileHandle`s. `stdinDescriptor` is `stdin`'s own file descriptor
+/// (not a duplicate), for use with `FDWriteSupport.writeAll(_:to:)`; it is
+/// valid only while `stdin` is open, and closing `stdin` closes it.
+///
+/// The child leads its own process group (`pgid == pid`); `ProcessTermination`
+/// signals that group, so grandchildren that inherited the pipes are
+/// terminated with it. Only the pipes are inherited: every other descriptor
+/// is closed in the child.
 /// `@unchecked Sendable`: all stored properties are immutable; FileHandle
 /// is documented thread-safe for independent handles.
 public struct SpawnedProcess: @unchecked Sendable {
@@ -146,7 +152,24 @@ public enum ProcessLauncher {
 			throw ProcessLauncherError.spawnAttributesFailed(operation: "setsigdefault", errno: setSigDefaultResult)
 		}
 
-		let setFlagsResult = posix_spawnattr_setflags(&attributes, spawnFlags | Int16(POSIX_SPAWN_SETSIGDEF))
+		// The child leads a new process group (pgid == pid) so
+		// `ProcessTermination` can signal grandchildren that inherited its
+		// pipes. CLOEXEC_DEFAULT closes every descriptor the file actions
+		// above do not set up: our own pipe ends are FD_CLOEXEC only after
+		// `fcntl`, so without it a concurrent spawn on another thread could
+		// inherit them and hold the other child's stdin/stdout open.
+		let setPGroupResult = posix_spawnattr_setpgroup(&attributes, 0)
+		if setPGroupResult != 0 {
+			closePipe(&stdinPipe)
+			closePipe(&stdoutPipe)
+			closePipe(&stderrPipe)
+			throw ProcessLauncherError.spawnAttributesFailed(operation: "setpgroup", errno: setPGroupResult)
+		}
+
+		let setFlagsResult = posix_spawnattr_setflags(
+			&attributes,
+			spawnFlags | Int16(POSIX_SPAWN_SETSIGDEF) | Int16(POSIX_SPAWN_SETPGROUP) | Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
+		)
 		if setFlagsResult != 0 {
 			closePipe(&stdinPipe)
 			closePipe(&stdoutPipe)

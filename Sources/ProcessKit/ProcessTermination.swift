@@ -56,6 +56,29 @@ public enum ProcessTermination {
 		}.value
 	}
 
+	/// Whether `pid` is a child of this process that has not been reaped yet
+	/// (running or zombie). While that holds its pid, and so a process group
+	/// with that id, cannot belong to anything else.
+	private static func isUnreapedChild(_ pid: pid_t) -> Bool {
+		var info = siginfo_t()
+		while true {
+			if waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0 { return true }
+			if errno != EINTR { return false }
+		}
+	}
+
+	/// Sends `signal` to the child's process group when it leads one
+	/// (`ProcessLauncher` spawns each child into its own group), so
+	/// grandchildren holding the child's pipes are signalled too; otherwise,
+	/// or when the group is gone, to the child alone. Returns `kill(2)`'s
+	/// result for the last call made, with `errno` set as it left it.
+	private static func signalChild(_ pid: pid_t, _ signal: Int32) -> Int32 {
+		if pid > 0, isUnreapedChild(pid), kill(-pid, signal) == 0 {
+			return 0
+		}
+		return kill(pid, signal)
+	}
+
 	private static func waitForExitUntil(
 		pid: pid_t,
 		status: inout Int32,
@@ -88,7 +111,7 @@ public enum ProcessTermination {
 		let shortPollNs = UInt64(pollInterval * 1_000_000_000)
 		var lastSignal: Int32?
 
-		if kill(pid, SIGTERM) == 0 {
+		if signalChild(pid, SIGTERM) == 0 {
 			lastSignal = SIGTERM
 		} else if errno == ESRCH {
 			return normalizedExitCode(status)
@@ -106,7 +129,7 @@ public enum ProcessTermination {
 		}
 
 		logger("Process \(pid) did not exit after SIGTERM; sending SIGKILL")
-		if kill(pid, SIGKILL) == 0 {
+		if signalChild(pid, SIGKILL) == 0 {
 			lastSignal = SIGKILL
 		} else if errno == ESRCH {
 			return normalizedExitCode(status)

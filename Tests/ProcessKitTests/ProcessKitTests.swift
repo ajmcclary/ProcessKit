@@ -49,6 +49,57 @@ final class ProcessLifecycleTests: XCTestCase {
 		XCTAssertEqual(String(data: output, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), "/private/tmp")
 	}
 
+	/// A descriptor without FD_CLOEXEC — e.g. another spawn's pipe in the window
+	/// between `pipe()` and `fcntl` — must not be inherited by the child.
+	func testSpawnDoesNotLeakInheritableDescriptorsIntoChild() throws {
+		var fds: [Int32] = [-1, -1]
+		XCTAssertEqual(pipe(&fds), 0)
+		// Move both ends far above the numbers `ls` itself opens (its
+		// directory handle takes the lowest free descriptor). F_DUPFD
+		// leaves FD_CLOEXEC clear.
+		let leaked = [fcntl(fds[0], F_DUPFD, 200), fcntl(fds[1], F_DUPFD, 200)]
+		close(fds[0]); close(fds[1])
+		defer { close(leaked[0]); close(leaked[1]) }
+		XCTAssertGreaterThanOrEqual(leaked[0], 200)
+		XCTAssertEqual(fcntl(leaked[0], F_GETFD) & FD_CLOEXEC, 0)
+		XCTAssertEqual(fcntl(leaked[1], F_GETFD) & FD_CLOEXEC, 0)
+
+		let process = try ProcessLauncher.spawn(
+			command: "/bin/ls",
+			arguments: ["/dev/fd"],
+			environment: ProcessInfo.processInfo.environment,
+			workingDirectory: nil
+		)
+		defer { closeHandles(process) }
+		let listing = String(decoding: process.stdout.readDataToEndOfFile(), as: UTF8.self)
+		let open = Set(listing.split(whereSeparator: \.isNewline).compactMap { Int32($0) })
+
+		XCTAssertTrue(open.isSuperset(of: [0, 1, 2]), "listing: \(listing)")
+		XCTAssertFalse(open.contains(leaked[0]), "read end \(leaked[0]) leaked; listing: \(listing)")
+		XCTAssertFalse(open.contains(leaked[1]), "write end \(leaked[1]) leaked; listing: \(listing)")
+		var status: Int32 = 0
+		_ = Darwin.waitpid(process.pid, &status, 0)
+	}
+
+	func testTerminationAlsoEndsGrandchildHoldingStdout() async throws {
+		let process = try spawnShell("sleep 30 & wait")
+		defer { closeHandles(process) }
+		try await Task.sleep(nanoseconds: 200_000_000) // let the background sleep start
+
+		_ = await ProcessTermination.terminateAndReap(
+			pid: process.pid,
+			policy: ProcessTerminationPolicy(sigtermGracePeriod: .milliseconds(500), sigkillGracePeriod: .milliseconds(500))
+		)
+
+		var pollDescriptor = pollfd(fd: process.stdout.fileDescriptor, events: Int16(POLLIN), revents: 0)
+		guard poll(&pollDescriptor, 1, 3_000) == 1 else {
+			kill(-process.pid, SIGKILL) // don't leave the grandchild behind on failure
+			return XCTFail("stdout never reached EOF: a grandchild still holds it")
+		}
+		var byte: UInt8 = 0
+		XCTAssertEqual(Darwin.read(process.stdout.fileDescriptor, &byte, 1), 0, "expected EOF")
+	}
+
 	// MARK: Termination (ported from RepoPrompt's real-process suite)
 
 	func testWaitForTerminationReturnsExitCodeForNormalExit() async throws {
