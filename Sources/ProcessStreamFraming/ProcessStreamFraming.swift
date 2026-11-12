@@ -319,11 +319,15 @@ public func trimmedASCIIWhitespace(_ data: Data) -> Data? {
 /// Repairs raw control characters that appear inside JSON strings (for example
 /// unescaped LF/CR bytes) so `JSONSerialization` can decode the payload.
 ///
+/// A backslash directly before a raw control character is kept as a literal
+/// backslash (`\\` then the escaped control character), which is what an
+/// unescaped shell line continuation (`\` + newline) means.
+///
 /// Returns `nil` when no repair is needed or when the payload is not a JSON
 /// candidate (`{...}` / `[...]`).
 public func repairJSONStringControlCharacters(_ data: Data) -> Data? {
 	guard !data.isEmpty else { return nil }
-	guard data.contains(0x0A) || data.contains(0x0D) else { return nil }
+	guard data.contains(where: { $0 < 0x20 }) else { return nil }
 
 	var firstIndex = data.startIndex
 	while firstIndex < data.endIndex, isASCIIWhitespace(data[firstIndex]) {
@@ -342,10 +346,15 @@ public func repairJSONStringControlCharacters(_ data: Data) -> Data? {
 		if inString {
 			if escaping {
 				escaping = false
-				repaired.append(byte)
-				continue
-			}
-			if byte == 0x5C {
+				if byte < 0x20 {
+					// `\` + raw control byte is not a JSON escape: make the
+					// backslash literal, then escape the control byte below.
+					repaired.append(0x5C)
+				} else {
+					repaired.append(byte)
+					continue
+				}
+			} else if byte == 0x5C {
 				escaping = true
 				repaired.append(byte)
 				continue

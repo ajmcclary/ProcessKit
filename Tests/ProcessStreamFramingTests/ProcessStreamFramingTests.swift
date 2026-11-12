@@ -161,6 +161,25 @@ final class ProcessStreamFramingTests: XCTestCase {
 		XCTAssertEqual(sample?.1, true)
 	}
 
+	func testRepairEscapesRawTabWhenItIsTheOnlyControlCharacter() throws {
+		let broken = Data("{\"a\":\"x\ty\"}".utf8)
+		let repaired = try XCTUnwrap(repairJSONStringControlCharacters(broken))
+		let obj = try XCTUnwrap(try JSONSerialization.jsonObject(with: repaired) as? [String: Any])
+		XCTAssertEqual(obj["a"] as? String, "x\ty")
+	}
+
+	func testRepairKeepsBackslashBeforeRawNewlineAsALiteralBackslash() throws {
+		let broken = Data("{\"cmd\":\"ls \\\n  -la \\\r\nend\"}".utf8)
+		let repaired = try XCTUnwrap(repairJSONStringControlCharacters(broken))
+		let obj = try XCTUnwrap(try JSONSerialization.jsonObject(with: repaired) as? [String: Any])
+		XCTAssertEqual(obj["cmd"] as? String, "ls \\\n  -la \\\r\nend")
+	}
+
+	func testRepairLeavesWhitespaceOutsideStringsAlone() {
+		XCTAssertNil(repairJSONStringControlCharacters(Data("{\t\"a\":\r\n\t1,\"b\":\"\\t\\n\"}".utf8)))
+		XCTAssertNil(repairJSONStringControlCharacters(Data("\t[1,\t2]".utf8)))
+	}
+
 	func testRepairJSONStringControlCharacters() {
 		let broken = Data("{\"a\":\"x\ny\"}".utf8)
 		let repaired = repairJSONStringControlCharacters(broken)
