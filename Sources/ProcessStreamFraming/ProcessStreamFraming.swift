@@ -34,6 +34,19 @@ public func makeUTF8Sample(from data: Data, limit: Int) -> (String, Bool)? {
 /// candidate"). Lines that start with any other non-whitespace byte are split on
 /// every `\n` unconditionally.
 ///
+/// A JSON candidate whose string never closes (an odd-quote log line such as
+/// `[WARN] "abc`, or a truncated record) would otherwise keep the framer
+/// "inside a string" for every later line. So once a logical line has spanned
+/// a raw newline, each further physical line is checked as it completes: if it
+/// is on its own a complete JSON object or array that contains a string, the
+/// quote tracking that joined it was wrong, and the framer resplits — every
+/// physical line before it is emitted on its own, then the line itself. A
+/// string whose raw newlines are its only defect cannot trigger this: inside
+/// it every `"` is escaped, so no physical line of it parses as JSON with a
+/// string in it (except a contrived array/object whose second string begins
+/// right where the first ends, e.g. `["x⏎{",":1}⏎"]`). Well-formed NDJSON
+/// never has a raw newline inside a string and is not affected.
+///
 /// Performance: uses `withUnsafeBytes` + slice appends to avoid per-byte Data.append
 /// overhead on large chunks.
 ///
@@ -82,6 +95,10 @@ public struct LineFramer: Sendable {
 	private var isJSONCandidate = false
 	/// Whether we've seen the first non-whitespace byte of the current line (to determine JSON candidacy).
 	private var hasSeenLineStart = false
+	/// Offset in `carry` of the current physical line, set once the current
+	/// logical line has crossed a raw newline inside a JSON string; `nil`
+	/// while the logical line is still on its first physical line.
+	private var physicalLineStart: Int?
 
 	public let limits: Limits
 
@@ -137,13 +154,16 @@ public struct LineFramer: Sendable {
 							}
 						}
 					case 0x0A: // '\n'
-						if inJSONString {
+						// Append everything up to and including this byte.
+						let slice = UnsafeBufferPointer(start: base + sliceStart, count: i + 1 - sliceStart)
+						carry.append(slice)
+						sliceStart = i + 1
+						if resplitIfPhysicalLineIsStandaloneRecord(&pending) {
+							// Quote tracking was wrong; state is reset for a new line.
+						} else if inJSONString {
 							isEscapingJSONStringCharacter = false
+							physicalLineStart = carry.endIndex
 						} else {
-							// Append everything up to and including this byte, then emit.
-							let slice = UnsafeBufferPointer(start: base + sliceStart, count: i + 1 - sliceStart)
-							carry.append(slice)
-							sliceStart = i + 1
 							emitLine(&pending)
 						}
 					default:
@@ -182,6 +202,7 @@ public struct LineFramer: Sendable {
 			isEscapingJSONStringCharacter = false
 			hasSeenLineStart = false
 			isJSONCandidate = false
+			physicalLineStart = nil
 			diagnostics.append(.overflow(droppedBytes: dropped, retainedBytes: retained))
 		}
 
@@ -202,6 +223,7 @@ public struct LineFramer: Sendable {
 		isEscapingJSONStringCharacter = false
 		hasSeenLineStart = false
 		isJSONCandidate = false
+		physicalLineStart = nil
 	}
 
 	// MARK: - Private
@@ -215,10 +237,56 @@ public struct LineFramer: Sendable {
 		}
 		pending.append(line)
 		carry.removeAll(keepingCapacity: true)
+		resetLineState()
+	}
+
+	private mutating func resetLineState() {
 		inJSONString = false
 		isEscapingJSONStringCharacter = false
 		hasSeenLineStart = false
 		isJSONCandidate = false
+		physicalLineStart = nil
+	}
+
+	/// Called with `carry` ending in the `\n` that just completed a physical
+	/// line. When the logical line already spans a raw newline and this
+	/// physical line is on its own a complete JSON record, emits every earlier
+	/// physical line separately, then this one, and resets line state.
+	private mutating func resplitIfPhysicalLineIsStandaloneRecord(_ pending: inout [Data]) -> Bool {
+		guard let start = physicalLineStart else { return false }
+		var end = carry.endIndex - 1 // exclude the \n
+		if end > start, carry[end - 1] == 0x0D {
+			end -= 1
+		}
+		let segment = carry[start..<end]
+		guard Self.isStandaloneJSONRecord(segment) else { return false }
+
+		var lineStart = carry.startIndex
+		for index in carry.startIndex..<start where carry[index] == 0x0A {
+			var lineEnd = index
+			if lineEnd > lineStart, carry[lineEnd - 1] == 0x0D {
+				lineEnd -= 1
+			}
+			pending.append(carry.subdata(in: lineStart..<lineEnd))
+			lineStart = index + 1
+		}
+		pending.append(Data(segment))
+		carry.removeAll(keepingCapacity: true)
+		resetLineState()
+		return true
+	}
+
+	/// A complete JSON object or array containing at least one string. The
+	/// string requirement is what rules out lines of a string's own content:
+	/// those can contain `"` only escaped, which is invalid outside a string.
+	private static func isStandaloneJSONRecord(_ segment: Data) -> Bool {
+		guard let first = segment.first(where: { !isASCIIWhitespace($0) }),
+			first == 0x7B || first == 0x5B,
+			segment.contains(0x22)
+		else {
+			return false
+		}
+		return (try? JSONSerialization.jsonObject(with: Data(segment))) != nil
 	}
 }
 
