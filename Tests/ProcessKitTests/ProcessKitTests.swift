@@ -101,6 +101,35 @@ final class ProcessLifecycleTests: XCTestCase {
 		XCTAssertEqual(exitCode, 128 + SIGKILL)
 	}
 
+	private func processCPUSeconds() -> Double {
+		var usage = rusage()
+		getrusage(RUSAGE_SELF, &usage)
+		func seconds(_ t: timeval) -> Double { Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000 }
+		return seconds(usage.ru_utime) + seconds(usage.ru_stime)
+	}
+
+	/// Cancellation is what triggers termination, and a cancelled task's
+	/// `Task.sleep` throws at once: the grace-period polling must still sleep.
+	func testCancelledWaitSleepsBetweenPollsDuringTerminationGrace() async throws {
+		let process = try spawnShell("trap '' TERM; exec sleep 30")
+		defer { closeHandles(process) }
+		try await Task.sleep(nanoseconds: 200_000_000) // let the trap install
+
+		let policy = ProcessTerminationPolicy(sigtermGracePeriod: .seconds(1), sigkillGracePeriod: .seconds(1))
+		let cpuBefore = processCPUSeconds()
+		let wallBefore = ProcessInfo.processInfo.systemUptime
+		let task = Task {
+			try await ProcessTermination.waitForTermination(pid: process.pid, timeout: nil, policy: policy)
+		}
+		task.cancel()
+		let result = try await task.value
+		let cpu = processCPUSeconds() - cpuBefore
+
+		XCTAssertEqual(result.exitCode, 128 + SIGKILL)
+		XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - wallBefore, 0.9)
+		XCTAssertLessThan(cpu, 0.3, "polled waitpid without sleeping for the whole SIGTERM grace")
+	}
+
 	func testTerminateAndReapReturnsOriginalExitCodeForAlreadyExitedChild() async throws {
 		let process = try spawnShell("exit 11")
 		defer { closeHandles(process) }

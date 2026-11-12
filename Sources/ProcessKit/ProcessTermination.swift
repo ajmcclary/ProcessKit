@@ -45,6 +45,17 @@ public enum ProcessTermination {
 		return rawStatus
 	}
 
+	/// Sleeps for the full interval even when the calling task is cancelled.
+	/// Termination runs precisely because the task was cancelled, and a
+	/// cancelled task's `Task.sleep` throws at once, which turned the grace
+	/// period polling into a `waitpid(WNOHANG)` busy loop. A detached task
+	/// does not inherit the caller's cancellation.
+	private static func sleepIgnoringCancellation(nanoseconds: UInt64) async {
+		await Task.detached {
+			try? await Task.sleep(nanoseconds: nanoseconds)
+		}.value
+	}
+
 	private static func waitForExitUntil(
 		pid: pid_t,
 		status: inout Int32,
@@ -62,7 +73,7 @@ public enum ProcessTermination {
 				logger("waitpid failed while reaping process \(pid): \(message)")
 				return false
 			}
-			try? await Task.sleep(nanoseconds: pollIntervalNs)
+			await sleepIgnoringCancellation(nanoseconds: pollIntervalNs)
 		}
 		return false
 	}
