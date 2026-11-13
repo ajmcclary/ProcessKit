@@ -37,15 +37,25 @@ public func makeUTF8Sample(from data: Data, limit: Int) -> (String, Bool)? {
 /// A JSON candidate whose string never closes (an odd-quote log line such as
 /// `[WARN] "abc`, or a truncated record) would otherwise keep the framer
 /// "inside a string" for every later line. So once a logical line has spanned
-/// a raw newline, each further physical line is checked as it completes: if it
-/// is on its own a complete JSON object or array that contains a string, the
-/// quote tracking that joined it was wrong, and the framer resplits — every
-/// physical line before it is emitted on its own, then the line itself. A
-/// string whose raw newlines are its only defect cannot trigger this: inside
-/// it every `"` is escaped, so no physical line of it parses as JSON with a
-/// string in it (except a contrived array/object whose second string begins
-/// right where the first ends, e.g. `["x⏎{",":1}⏎"]`). Well-formed NDJSON
-/// never has a raw newline inside a string and is not affected.
+/// a raw newline, each further physical line is checked as it completes. The
+/// framer resplits only when that line is on its own (1) a complete JSON
+/// object or array under a strict RFC 8259 check (no trailing commas, valid
+/// UTF-8, nothing after the value) and (2) has a string holding at least one
+/// byte that cannot occur in JSON text between two strings, i.e. anything but
+/// whitespace, `,:[]{}`, digits, `-+.eE` and the letters of `true`/`false`/
+/// `null`; an escape counts. It then emits every physical line before it on
+/// its own, then the line itself.
+///
+/// Exactly what remains possible: no record that is valid JSON apart from raw
+/// control characters inside its strings is ever split. Inside such a string
+/// a physical line can parse on its own only with its quote parity opposite to
+/// the record's, so no backslash can occur in it and each of its strings is
+/// the record's text between two strings, which (2) rejects; at the record's
+/// closing newline the parity cannot work out at all. A record that is
+/// malformed in another way as well (truncated, unescaped quotes) has no such
+/// guarantee: if a later physical line meets (1) and (2), the framer treats it
+/// as a new record. Well-formed NDJSON never has a raw newline inside a string
+/// and is not affected.
 ///
 /// Performance: uses `withUnsafeBytes` + slice appends to avoid per-byte Data.append
 /// overhead on large chunks.
@@ -276,9 +286,7 @@ public struct LineFramer: Sendable {
 		return true
 	}
 
-	/// A complete JSON object or array containing at least one string. The
-	/// string requirement is what rules out lines of a string's own content:
-	/// those can contain `"` only escaped, which is invalid outside a string.
+	/// Conditions (1) and (2) of the resplit rule in the type's documentation.
 	private static func isStandaloneJSONRecord(_ segment: Data) -> Bool {
 		guard let first = segment.first(where: { !isASCIIWhitespace($0) }),
 			first == 0x7B || first == 0x5B,
@@ -286,7 +294,192 @@ public struct LineFramer: Sendable {
 		else {
 			return false
 		}
-		return (try? JSONSerialization.jsonObject(with: Data(segment))) != nil
+		let scan = segment.withUnsafeBytes { raw in
+			StrictJSONScan.scan(raw.bindMemory(to: UInt8.self))
+		}
+		return scan.isValidContainer
+			&& scan.hasNonStructuralString
+			&& String(data: segment, encoding: .utf8) != nil
+	}
+}
+
+
+/// Iterative strict RFC 8259 validator for one top-level JSON object or array
+/// (no recursion, so nesting depth cannot exhaust the stack). Also reports
+/// whether any string holds a byte outside the set that can occur in JSON
+/// text between two strings. UTF-8 validity is checked by the caller.
+private enum StrictJSONScan {
+	struct Result {
+		var isValidContainer: Bool
+		var hasNonStructuralString: Bool
+	}
+
+	private enum Container { case object, array }
+	private enum Expect { case value, valueOrArrayClose, keyOrObjectClose, key, colon, separatorOrClose }
+
+	static func scan(_ bytes: UnsafeBufferPointer<UInt8>) -> Result {
+		let invalid = Result(isValidContainer: false, hasNonStructuralString: false)
+		let count = bytes.count
+		var index = 0
+		var stack: [Container] = []
+		var expect = Expect.value
+		var nonStructural = false
+		var sawRoot = false
+
+		func skipWhitespace() {
+			while index < count {
+				switch bytes[index] {
+				case 0x20, 0x09, 0x0A, 0x0D: index += 1
+				default: return
+				}
+			}
+		}
+
+		/// At an opening quote; on success `index` is past the closing quote.
+		func scanString() -> Bool {
+			index += 1
+			while index < count {
+				let byte = bytes[index]
+				switch byte {
+				case 0x22:
+					index += 1
+					return true
+				case 0x5C:
+					nonStructural = true
+					index += 1
+					guard index < count else { return false }
+					switch bytes[index] {
+					case 0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74:
+						index += 1
+					case 0x75:
+						guard index + 4 < count else { return false }
+						for offset in 1...4 where !isHexDigit(bytes[index + offset]) { return false }
+						index += 5
+					default:
+						return false
+					}
+				case 0x00..<0x20:
+					return false
+				default:
+					if !isStructuralTextByte(byte) { nonStructural = true }
+					index += 1
+				}
+			}
+			return false
+		}
+
+		func scanNumber() -> Bool {
+			func digits() -> Int {
+				let start = index
+				while index < count, (0x30...0x39).contains(bytes[index]) { index += 1 }
+				return index - start
+			}
+			if bytes[index] == 0x2D { index += 1 } // -
+			guard index < count else { return false }
+			if bytes[index] == 0x30 {
+				index += 1
+			} else if digits() == 0 {
+				return false
+			}
+			if index < count, bytes[index] == 0x2E { // .
+				index += 1
+				guard digits() > 0 else { return false }
+			}
+			if index < count, bytes[index] == 0x65 || bytes[index] == 0x45 { // e E
+				index += 1
+				if index < count, bytes[index] == 0x2B || bytes[index] == 0x2D { index += 1 }
+				guard digits() > 0 else { return false }
+			}
+			return true
+		}
+
+		func scanLiteral(_ literal: StaticString) -> Bool {
+			let length = literal.utf8CodeUnitCount
+			guard index + length <= count else { return false }
+			let base = literal.utf8Start
+			for offset in 0..<length where bytes[index + offset] != base[offset] { return false }
+			index += length
+			return true
+		}
+
+		while true {
+			skipWhitespace()
+			guard index < count else {
+				return sawRoot && stack.isEmpty && expect == .separatorOrClose
+					? Result(isValidContainer: true, hasNonStructuralString: nonStructural)
+					: invalid
+			}
+			let byte = bytes[index]
+			switch expect {
+			case .value, .valueOrArrayClose:
+				if expect == .valueOrArrayClose, byte == 0x5D { // ]
+					stack.removeLast()
+					index += 1
+					expect = .separatorOrClose
+					continue
+				}
+				switch byte {
+				case 0x7B: // {
+					stack.append(.object); sawRoot = true; index += 1; expect = .keyOrObjectClose
+				case 0x5B: // [
+					stack.append(.array); sawRoot = true; index += 1; expect = .valueOrArrayClose
+				case 0x22:
+					guard !stack.isEmpty, scanString() else { return invalid }
+					expect = .separatorOrClose
+				case 0x74, 0x66, 0x6E: // t f n
+					guard !stack.isEmpty,
+						scanLiteral(byte == 0x74 ? "true" : byte == 0x66 ? "false" : "null")
+					else { return invalid }
+					expect = .separatorOrClose
+				case 0x2D, 0x30...0x39:
+					guard !stack.isEmpty, scanNumber() else { return invalid }
+					expect = .separatorOrClose
+				default:
+					return invalid
+				}
+			case .keyOrObjectClose, .key:
+				if expect == .keyOrObjectClose, byte == 0x7D { // }
+					stack.removeLast()
+					index += 1
+					expect = .separatorOrClose
+					continue
+				}
+				guard byte == 0x22, scanString() else { return invalid }
+				expect = .colon
+			case .colon:
+				guard byte == 0x3A else { return invalid }
+				index += 1
+				expect = .value
+			case .separatorOrClose:
+				guard let top = stack.last else { return invalid } // bytes after the root value
+				if byte == 0x2C { // ,
+					index += 1
+					expect = top == .object ? .key : .value
+				} else if (byte == 0x7D && top == .object) || (byte == 0x5D && top == .array) {
+					stack.removeLast()
+					index += 1
+				} else {
+					return invalid
+				}
+			}
+		}
+	}
+
+	private static func isHexDigit(_ byte: UInt8) -> Bool {
+		(0x30...0x39).contains(byte) || (0x41...0x46).contains(byte) || (0x61...0x66).contains(byte)
+	}
+
+	/// Bytes that can occur in JSON text between two strings: whitespace,
+	/// punctuation, number characters, and the letters of `true`/`false`/`null`.
+	private static func isStructuralTextByte(_ byte: UInt8) -> Bool {
+		switch byte {
+		case 0x20, 0x09, 0x2C, 0x3A, 0x5B, 0x5D, 0x7B, 0x7D, // space tab , : [ ] { }
+			0x2B, 0x2D, 0x2E, 0x30...0x39, 0x45,              // + - . 0-9 E
+			0x61, 0x65, 0x66, 0x6C, 0x6E, 0x72, 0x73, 0x74, 0x75: // a e f l n r s t u
+			return true
+		default:
+			return false
+		}
 	}
 }
 

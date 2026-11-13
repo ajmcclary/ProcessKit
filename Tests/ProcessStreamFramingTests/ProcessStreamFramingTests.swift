@@ -128,6 +128,78 @@ final class ProcessStreamFramingTests: XCTestCase {
 		XCTAssertEqual(linesFedBytewise(input), records)
 	}
 
+	/// A physical line inside a raw-newline string can be valid *lenient* JSON
+	/// (`JSONSerialization` accepts `[":{",]`); it must not end the record.
+	func testRawNewlineRecordWithTrailingCommaShapedLineStaysWhole() {
+		let record = "{\"t\":\"x\n[\":{\",]\n{é[}\":75}}"
+		var framer = LineFramer()
+		XCTAssertEqual(lines(&framer, feeding: [record + "\n"]), [record])
+		XCTAssertEqual(linesFedBytewise(record + "\n"), [record])
+	}
+
+	/// Here the middle physical line `{",":1}` is strictly valid JSON: its only
+	/// string holds text that can sit between two strings of the record.
+	func testRawNewlineRecordWithStrictlyValidStructuralLineStaysWhole() {
+		let records = ["[\"x\n{\",\":1}\n\"]", "{\"a\":\"x\n[\" , \"]\n\":[1]}"]
+		var framer = LineFramer()
+		XCTAssertEqual(lines(&framer, feeding: [records.joined(separator: "\n") + "\n"]), records)
+	}
+
+	/// A line accepted only by a lenient parser does not prove the quote
+	/// tracking wrong, so it does not trigger a resplit on its own.
+	func testOddQuoteRecoveryRequiresAStrictlyValidLine() {
+		var framer = LineFramer()
+		XCTAssertEqual(
+			lines(&framer, feeding: ["[WARN] \"abc\n{\"type\":\"a\",}\n"]),
+			["[WARN] \"abc\n{\"type\":\"a\",}\n"]
+		)
+		var recovering = LineFramer()
+		XCTAssertEqual(
+			lines(&recovering, feeding: ["[WARN] \"abc\n{\"type\":\"a\",}\n{\"type\":\"b\"}\n"]),
+			["[WARN] \"abc", "{\"type\":\"a\",}", "{\"type\":\"b\"}"]
+		)
+	}
+
+	/// Records that are valid JSON apart from raw newlines/tabs inside strings,
+	/// with string text drawn mostly from JSON's structural characters, must
+	/// each come out whole, however they are chunked.
+	func testHostileRawNewlineRecordsAreNeverSplit() {
+		var seed: UInt64 = 0x5EED_F00D
+		func next(_ bound: Int) -> Int {
+			seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+			return Int((seed >> 33) % UInt64(bound))
+		}
+		let alphabet: [String] = ["\n", "\n{", "\n[", "{", "}", "[", "]", ",", ":", " ", "1", "e", "t", "x", "é", "\t", "\\\"", "\\\\", "\n\\\""]
+		func string() -> String {
+			"\"" + (0..<next(6)).map { _ in alphabet[next(alphabet.count)] }.joined() + "\""
+		}
+		func value(_ depth: Int) -> String {
+			switch depth > 2 ? next(3) : next(5) {
+			case 0: return string()
+			case 1: return String(next(100))
+			case 2: return ["true", "false", "null"][next(3)]
+			case 3: return "[" + (0..<next(4)).map { _ in value(depth + 1) }.joined(separator: ",") + "]"
+			default: return "{" + (0..<next(4)).map { _ in string() + ":" + value(depth + 1) }.joined(separator: ",") + "}"
+			}
+		}
+		for stream in 0..<2_000 {
+			let records = (0..<4).map { _ in next(2) == 0 ? "[" + value(1) + "]" : "{\"k\":" + value(1) + "}" }
+			let input = Data((records.joined(separator: "\n") + "\n").utf8)
+			var framer = LineFramer()
+			var emitted: [String] = []
+			var offset = 0
+			while offset < input.count {
+				let upper = min(offset + next(17) + 1, input.count)
+				framer.feed(input.subdata(in: offset..<upper)) { emitted.append(String(decoding: $0, as: UTF8.self)) }
+				offset = upper
+			}
+			framer.flush { emitted.append(String(decoding: $0, as: UTF8.self)) }
+			if emitted != records {
+				return XCTFail("stream \(stream): \(records.debugDescription) -> \(emitted.debugDescription)")
+			}
+		}
+	}
+
 	/// Same input as RepoPrompt's `testLineFramerStressInterleavedJSONAndGarbageAcrossChunkBoundaries`:
 	/// raw-newline records and odd-quote garbage lines, fed in random chunk sizes.
 	func testInterleavedRawNewlineRecordsAndGarbageAcrossRandomChunks() {
