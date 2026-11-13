@@ -58,9 +58,9 @@ application logging (functions accept a plain `(String) -> Void` logger).
 
 ```swift
 dependencies: [
-    // 0.1.0-beta.1 is a prerelease identifier — SwiftPM only resolves
+    // 0.1.0-beta.6 is a prerelease identifier — SwiftPM only resolves
     // prerelease tags when the lower bound itself names one.
-    .package(url: "https://github.com/ajmcclary/ProcessKit.git", .upToNextMinor(from: "0.1.0-beta.1"))
+    .package(url: "https://github.com/ajmcclary/ProcessKit.git", .upToNextMinor(from: "0.1.0-beta.6"))
 ]
 ```
 
