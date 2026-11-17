@@ -2,6 +2,24 @@
 
 All notable changes to ProcessKit are documented in this file.
 
+## [Unreleased]
+
+No public API changes.
+
+- **`ProcessTermination` wakes on the child's exit instead of polling.**
+  Between `waitpid(WNOHANG)` checks the reaper used to sleep 50 ms (200 ms
+  after the first 2 s), so every child, however short, was reaped at
+  least ~50 ms after it was spawned. It now waits on a dispatch process
+  source (kqueue `EVFILT_PROC`/`NOTE_EXIT`) and reaps as soon as the child
+  exits, in `waitForTermination` (with and without a timeout) and in the
+  SIGTERM and SIGKILL grace waits of `terminateAndReap`. The old interval
+  remains as a fallback wake, so a missed event is never slower than
+  polling was. The exit watch never reaps: the caller's `waitpid` is
+  still the single reaper. Timeouts and grace periods now end at their
+  deadline instead of at the next poll after it (up to 50 or 200 ms
+  later). Cancellation, the SIGTERM→SIGKILL escalation and the returned
+  exit codes are unchanged.
+
 ## [0.1.0-beta.6] - 2026-11-12
 
 Remediates the 2026-11-12 full review. No public API changes: every

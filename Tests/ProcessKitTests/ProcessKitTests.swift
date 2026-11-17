@@ -219,6 +219,142 @@ final class ProcessLifecycleTests: XCTestCase {
 		XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1.0)
 	}
 
+	// MARK: Reap latency (review MT-01)
+
+	private func median(_ samples: [TimeInterval]) -> TimeInterval {
+		let sorted = samples.sorted()
+		return sorted[sorted.count / 2]
+	}
+
+	/// The reaper polled `waitpid(WNOHANG)` and slept 50 ms between polls, so
+	/// a child that exits in a millisecond was reaped no sooner than ~50 ms
+	/// later. It must wake on the exit itself.
+	///
+	/// Measured from the moment `spawn` returns: the polling reaper's first
+	/// `waitpid` ran then, while the exec'd child was still starting, so
+	/// every sample it produced was at least 50 ms. The bound is the median
+	/// of several runs under 40 ms, which leaves the child's own run time
+	/// plenty of room on a loaded machine and which polling could not meet.
+	func testShortLivedChildIsReapedWithoutWaitingOutAPollInterval() async throws {
+		for timeout in [nil, 10] as [TimeInterval?] {
+			var samples: [TimeInterval] = []
+			for _ in 0..<9 {
+				let process = try ProcessLauncher.spawn(
+					command: "/usr/bin/true",
+					arguments: [],
+					environment: ProcessInfo.processInfo.environment,
+					workingDirectory: nil
+				)
+				let start = ProcessInfo.processInfo.systemUptime
+				let result = try await ProcessTermination.waitForTermination(pid: process.pid, timeout: timeout)
+				samples.append(ProcessInfo.processInfo.systemUptime - start)
+				closeHandles(process)
+				XCTAssertEqual(result.exitCode, 0)
+				XCTAssertFalse(result.timedOut)
+			}
+			XCTAssertLessThan(
+				median(samples), 0.040,
+				"timeout \(String(describing: timeout)): spawn-to-reap samples \(samples.map { Int($0 * 1000) }) ms"
+			)
+		}
+	}
+
+	/// The termination grace waits must also wake on the exit, not on the
+	/// next 50 ms poll. A zero SIGTERM grace goes straight to SIGKILL, so
+	/// the measured time is the SIGKILL wait alone. (SIGKILL rather than
+	/// SIGTERM because a child spawned from a test's worker thread inherits
+	/// its blocked SIGTERM; see the remediation report.)
+	func testTerminateAndReapWakesOnExitAfterSignal() async throws {
+		var samples: [TimeInterval] = []
+		for _ in 0..<7 {
+			let process = try ProcessLauncher.spawn(
+				command: "/bin/sleep",
+				arguments: ["30"],
+				environment: ProcessInfo.processInfo.environment,
+				workingDirectory: nil
+			)
+			let start = ProcessInfo.processInfo.systemUptime
+			let exitCode = await ProcessTermination.terminateAndReap(
+				pid: process.pid,
+				policy: ProcessTerminationPolicy(sigtermGracePeriod: .zero, sigkillGracePeriod: .seconds(2))
+			)
+			samples.append(ProcessInfo.processInfo.systemUptime - start)
+			closeHandles(process)
+			XCTAssertEqual(exitCode, 128 + SIGKILL)
+		}
+		XCTAssertLessThan(median(samples), 0.040, "signal-to-reap samples \(samples.map { Int($0 * 1000) }) ms")
+	}
+
+	/// The race the event wait must survive: the child has already exited
+	/// (a zombie) when the exit watch is registered, so no NOTE_EXIT edge
+	/// arrives after registration. The wait must still return at once
+	/// rather than sit out its fallback.
+	func testExitWaitReturnsPromptlyForChildThatExitedBeforeRegistration() async throws {
+		let process = try spawnShell("exit 0")
+		defer { closeHandles(process) }
+		var info = siginfo_t()
+		// Block until it is a zombie, without reaping it.
+		XCTAssertEqual(waitid(P_PID, id_t(process.pid), &info, WEXITED | WNOWAIT), 0)
+
+		let start = ProcessInfo.processInfo.systemUptime
+		await ProcessTermination.waitForExitEvent(pid: process.pid, fallbackNanoseconds: 10_000_000_000, wakeOnCancellation: false)
+		XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1.0)
+
+		let result = try await ProcessTermination.waitForTermination(pid: process.pid, timeout: nil)
+		XCTAssertEqual(result.exitCode, 0)
+	}
+
+	/// The exit watch never reaps: the single owner's `waitpid` still gets
+	/// the child's status after the watch has fired.
+	func testExitWaitDoesNotReapTheChild() async throws {
+		let process = try spawnShell("exit 5")
+		defer { closeHandles(process) }
+
+		await ProcessTermination.waitForExitEvent(pid: process.pid, fallbackNanoseconds: 10_000_000_000, wakeOnCancellation: false)
+
+		var status: Int32 = 0
+		XCTAssertEqual(Darwin.waitpid(process.pid, &status, WNOHANG), process.pid)
+		XCTAssertEqual((status >> 8) & 0xff, 5)
+	}
+
+	/// A long-running child: the wait returns at its fallback, and a
+	/// cancelled task's wait (when asked to) returns at once.
+	func testExitWaitHonoursFallbackAndCancellation() async throws {
+		let process = try spawnShell("exec sleep 30")
+		defer {
+			kill(process.pid, SIGKILL)
+			var status: Int32 = 0
+			_ = Darwin.waitpid(process.pid, &status, 0)
+			closeHandles(process)
+		}
+
+		var start = ProcessInfo.processInfo.systemUptime
+		await ProcessTermination.waitForExitEvent(pid: process.pid, fallbackNanoseconds: 100_000_000, wakeOnCancellation: false)
+		let fallbackElapsed = ProcessInfo.processInfo.systemUptime - start
+		XCTAssertGreaterThanOrEqual(fallbackElapsed, 0.09)
+		XCTAssertLessThan(fallbackElapsed, 5.0)
+
+		let pid = process.pid
+		let task = Task {
+			await ProcessTermination.waitForExitEvent(pid: pid, fallbackNanoseconds: 10_000_000_000, wakeOnCancellation: true)
+		}
+		try await Task.sleep(nanoseconds: 50_000_000)
+		start = ProcessInfo.processInfo.systemUptime
+		task.cancel()
+		await task.value
+		XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 2.0)
+
+		// Not woken by cancellation when the caller says so (the termination
+		// grace must keep waiting after the cancel that started it).
+		let ignoring = Task {
+			await ProcessTermination.waitForExitEvent(pid: pid, fallbackNanoseconds: 300_000_000, wakeOnCancellation: false)
+		}
+		start = ProcessInfo.processInfo.systemUptime
+		ignoring.cancel()
+		await ignoring.value
+		XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - start, 0.29)
+	}
+
 	func testStdoutDescriptorReportsEOFAfterChildExitAndClose() throws {
 		let process = try spawnShell("exit 0")
 
