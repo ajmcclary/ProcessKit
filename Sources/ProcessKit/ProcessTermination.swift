@@ -164,8 +164,18 @@ public enum ProcessTermination {
 	/// grandchildren holding the child's pipes are signalled too; otherwise,
 	/// or when the group is gone, to the child alone. Returns `kill(2)`'s
 	/// result for the last call made, with `errno` set as it left it.
+	///
+	/// Signals nothing unless `pid` is still an unreaped child of this
+	/// process, and then returns -1 with `errno` ESRCH as if it had exited:
+	/// a pid that has been reaped (by this process's single reaper) may
+	/// already belong to an unrelated process, and `kill(0, …)` or a negative
+	/// pid would reach whole process groups.
 	private static func signalChild(_ pid: pid_t, _ signal: Int32) -> Int32 {
-		if pid > 0, isUnreapedChild(pid), kill(-pid, signal) == 0 {
+		guard pid > 0, isUnreapedChild(pid) else {
+			errno = ESRCH
+			return -1
+		}
+		if kill(-pid, signal) == 0 {
 			return 0
 		}
 		return kill(pid, signal)

@@ -29,6 +29,15 @@ No public API changes.
   now receive SIGTERM and can shut down cleanly; a termination of a child
   that honours SIGTERM ends with exit code 143 (128 + SIGTERM) instead of
   137 (128 + SIGKILL), and no longer waits out the SIGTERM grace.
+- **`ProcessTermination` never signals a pid that is not an unreaped
+  child.** `terminateAndReap` (and the termination inside
+  `waitForTermination`) used to fall back to `kill(pid, …)` when the pid
+  was no longer this process's unreaped child, so a call for a child that
+  had already been reaped sent SIGTERM and SIGKILL to whichever process
+  the kernel had since given that pid. It now signals nothing and returns
+  as for an exited child (the previous result whenever the pid was free).
+  A pid of 0 or below, which `kill` treats as a process group, is never
+  signalled either.
 
 ## [0.1.0-beta.6] - 2026-11-12
 

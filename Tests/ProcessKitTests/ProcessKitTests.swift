@@ -451,6 +451,38 @@ final class ProcessLifecycleTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - start, 0.29)
 	}
 
+	/// A pid that is not this process's unreaped child — a reaped pid the
+	/// kernel has since given to another process, here stood in for by a live
+	/// grandchild — must never be signalled. The shell reports when its
+	/// background `sleep` ends, so a stray SIGTERM shows up on stdout.
+	func testTerminateAndReapNeverSignalsAPidThatIsNotAnUnreapedChild() async throws {
+		let process = try spawnShell("sleep 30 & echo $!; wait; echo \"sleep ended $?\"")
+		defer {
+			kill(-process.pid, SIGKILL)
+			var status: Int32 = 0
+			_ = Darwin.waitpid(process.pid, &status, 0)
+			closeHandles(process)
+		}
+		var line = Data()
+		while line.last != UInt8(ascii: "\n") {
+			let byte = process.stdout.readData(ofLength: 1)
+			guard !byte.isEmpty else { return XCTFail("shell exited before reporting its background pid") }
+			line.append(byte)
+		}
+		let notAChild = try XCTUnwrap(pid_t(String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)))
+
+		_ = await ProcessTermination.terminateAndReap(
+			pid: notAChild,
+			policy: ProcessTerminationPolicy(sigtermGracePeriod: .milliseconds(100), sigkillGracePeriod: .milliseconds(100))
+		)
+
+		var pollDescriptor = pollfd(fd: process.stdout.fileDescriptor, events: Int16(POLLIN), revents: 0)
+		let ready = poll(&pollDescriptor, 1, 1_000)
+		let report = ready == 1 ? String(decoding: process.stdout.availableData, as: UTF8.self) : ""
+		XCTAssertEqual(report, "", "terminateAndReap signalled pid \(notAChild), which is not its unreaped child")
+		XCTAssertEqual(kill(notAChild, 0), 0)
+	}
+
 	func testStdoutDescriptorReportsEOFAfterChildExitAndClose() throws {
 		let process = try spawnShell("exit 0")
 
