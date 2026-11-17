@@ -18,7 +18,9 @@ import Darwin.POSIX.fcntl
 /// The child leads its own process group (`pgid == pid`); `ProcessTermination`
 /// signals that group, so grandchildren that inherited the pipes are
 /// terminated with it. Only the pipes are inherited: every other descriptor
-/// is closed in the child.
+/// is closed in the child. The child starts with no signal blocked and with
+/// default dispositions for SIGPIPE, SIGTERM, SIGINT, SIGHUP, SIGQUIT and
+/// SIGCHLD, whatever the spawning thread's mask and the parent's handlers.
 /// `@unchecked Sendable`: all stored properties are immutable; FileHandle
 /// is documented thread-safe for independent handles.
 public struct SpawnedProcess: @unchecked Sendable {
@@ -129,11 +131,23 @@ public enum ProcessLauncher {
 		posix_spawnattr_init(&attributes)
 		defer { posix_spawnattr_destroy(&attributes) }
 
-		// Parent-side write paths use no-SIGPIPE hardening; restore the default SIGPIPE
-		// disposition in spawned children so CLI/tool processes keep normal pipe semantics.
+		// The child starts with default dispositions for the signals a parent
+		// commonly ignores: SIGPIPE (parent-side write paths use no-SIGPIPE
+		// hardening, but CLI/tool processes keep normal pipe semantics), the
+		// termination signals `ProcessTermination` and terminals send, and
+		// SIGCHLD (an ignored SIGCHLD makes the child's own children reap
+		// themselves, breaking its waits).
 		var defaultSignals = sigset_t()
 		sigemptyset(&defaultSignals)
-		sigaddset(&defaultSignals, SIGPIPE)
+		for signal in [SIGPIPE, SIGTERM, SIGINT, SIGHUP, SIGQUIT, SIGCHLD] {
+			sigaddset(&defaultSignals, signal)
+		}
+		// ...and with no signal blocked. `posix_spawn` otherwise copies the
+		// calling thread's mask, and Swift-concurrency and GCD worker threads
+		// block SIGTERM, SIGINT and SIGHUP: a child spawned from one ignored
+		// every SIGTERM and was only ever ended by SIGKILL after the grace.
+		var emptyMask = sigset_t()
+		sigemptyset(&emptyMask)
 
 		var spawnFlags: Int16 = 0
 		let getFlagsResult = posix_spawnattr_getflags(&attributes, &spawnFlags)
@@ -158,6 +172,14 @@ public enum ProcessLauncher {
 		// above do not set up: our own pipe ends are FD_CLOEXEC only after
 		// `fcntl`, so without it a concurrent spawn on another thread could
 		// inherit them and hold the other child's stdin/stdout open.
+		let setSigMaskResult = posix_spawnattr_setsigmask(&attributes, &emptyMask)
+		if setSigMaskResult != 0 {
+			closePipe(&stdinPipe)
+			closePipe(&stdoutPipe)
+			closePipe(&stderrPipe)
+			throw ProcessLauncherError.spawnAttributesFailed(operation: "setsigmask", errno: setSigMaskResult)
+		}
+
 		let setPGroupResult = posix_spawnattr_setpgroup(&attributes, 0)
 		if setPGroupResult != 0 {
 			closePipe(&stdinPipe)
@@ -168,7 +190,7 @@ public enum ProcessLauncher {
 
 		let setFlagsResult = posix_spawnattr_setflags(
 			&attributes,
-			spawnFlags | Int16(POSIX_SPAWN_SETSIGDEF) | Int16(POSIX_SPAWN_SETPGROUP) | Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
+			spawnFlags | Int16(POSIX_SPAWN_SETSIGDEF) | Int16(POSIX_SPAWN_SETSIGMASK) | Int16(POSIX_SPAWN_SETPGROUP) | Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
 		)
 		if setFlagsResult != 0 {
 			closePipe(&stdinPipe)

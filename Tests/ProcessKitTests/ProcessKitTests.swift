@@ -15,6 +15,14 @@ final class ProcessLifecycleTests: XCTestCase {
 		)
 	}
 
+	/// Blocks until the child has exited, without reaping it. The child
+	/// receives SIGTERM, so a test about an already-exited child must not
+	/// race its own exit against termination.
+	private func waitUntilExited(_ process: SpawnedProcess) {
+		var info = siginfo_t()
+		while waitid(P_PID, id_t(process.pid), &info, WEXITED | WNOWAIT) == -1 && errno == EINTR {}
+	}
+
 	private func closeHandles(_ process: SpawnedProcess) {
 		process.stdin?.closeFile()
 		process.stdout.closeFile()
@@ -138,8 +146,10 @@ final class ProcessLifecycleTests: XCTestCase {
 	}
 
 	func testTerminateAndReapEscalatesToSigkillWhenSigtermIgnored() async throws {
-		let process = try spawnShell("trap '' TERM; while true; do sleep 1; done")
+		let process = try spawnShell("trap '' TERM; echo ready; while true; do sleep 1; done")
 		defer { closeHandles(process) }
+		// The trap must be installed before SIGTERM arrives, or the shell dies of it.
+		XCTAssertEqual(String(decoding: process.stdout.readData(ofLength: 6), as: UTF8.self), "ready\n")
 
 		let exitCode = await ProcessTermination.terminateAndReap(
 			pid: process.pid,
@@ -184,7 +194,7 @@ final class ProcessLifecycleTests: XCTestCase {
 	func testTerminateAndReapReturnsOriginalExitCodeForAlreadyExitedChild() async throws {
 		let process = try spawnShell("exit 11")
 		defer { closeHandles(process) }
-		try await Task.sleep(nanoseconds: 100_000_000)
+		waitUntilExited(process)
 
 		let exitCode = await ProcessTermination.terminateAndReap(pid: process.pid)
 		XCTAssertEqual(exitCode, 11)
@@ -208,6 +218,7 @@ final class ProcessLifecycleTests: XCTestCase {
 	func testSecondReapAfterTerminateAndReapReturnsPromptly() async throws {
 		let process = try spawnShell("exit 3")
 		defer { closeHandles(process) }
+		waitUntilExited(process)
 
 		let first = await ProcessTermination.terminateAndReap(pid: process.pid)
 		XCTAssertEqual(first, 3)
@@ -217,6 +228,92 @@ final class ProcessLifecycleTests: XCTestCase {
 		let start = ProcessInfo.processInfo.systemUptime
 		_ = await ProcessTermination.terminateAndReap(pid: process.pid)
 		XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1.0)
+	}
+
+	// MARK: Inherited signal state (review MT-01 follow-up)
+
+	/// Spawns while the calling thread blocks `blocking` and the process
+	/// ignores `ignoring`: the state a Swift-concurrency or GCD worker thread
+	/// (whose mask blocks SIGTERM, SIGINT and SIGHUP) or a host that ignores
+	/// signals hands to `posix_spawn`. Synchronous, so the spawn runs on the
+	/// thread whose mask was changed; both are restored before returning.
+	private func spawnUnderParentSignalState(
+		blocking: [Int32],
+		ignoring: [Int32],
+		command: String,
+		arguments: [String]
+	) throws -> SpawnedProcess {
+		var block = sigset_t()
+		sigemptyset(&block)
+		for signal in blocking { sigaddset(&block, signal) }
+		var previousMask = sigset_t()
+		pthread_sigmask(SIG_BLOCK, &block, &previousMask)
+		let previousHandlers = ignoring.map { ($0, Darwin.signal($0, SIG_IGN)) }
+		defer {
+			for (signal, handler) in previousHandlers { _ = Darwin.signal(signal, handler) }
+			pthread_sigmask(SIG_SETMASK, &previousMask, nil)
+		}
+		return try ProcessLauncher.spawn(
+			command: command,
+			arguments: arguments,
+			environment: ProcessInfo.processInfo.environment,
+			workingDirectory: nil
+		)
+	}
+
+	/// A child must not inherit the spawning thread's blocked signals or the
+	/// parent's ignored dispositions: with SIGTERM blocked it survived every
+	/// termination's SIGTERM and was only ever SIGKILLed after the full grace.
+	func testChildExitsOnSigtermWithinGraceWhenParentThreadBlocksIt() async throws {
+		let terminating: [Int32] = [SIGTERM, SIGINT, SIGHUP]
+		let process = try spawnUnderParentSignalState(
+			blocking: terminating, ignoring: terminating, command: "/bin/sleep", arguments: ["30"]
+		)
+		defer { closeHandles(process) }
+
+		let start = ProcessInfo.processInfo.systemUptime
+		let exitCode = await ProcessTermination.terminateAndReap(
+			pid: process.pid,
+			policy: ProcessTerminationPolicy(sigtermGracePeriod: .seconds(5), sigkillGracePeriod: .seconds(1))
+		)
+		XCTAssertEqual(exitCode, 128 + SIGTERM, "the child outlived SIGTERM and needed SIGKILL")
+		XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 4.0)
+	}
+
+	func testChildExitsOnSigintAndSighupWhenParentBlocksAndIgnoresThem() async throws {
+		for signal in [SIGINT, SIGHUP] {
+			let process = try spawnUnderParentSignalState(
+				blocking: [SIGTERM, SIGINT, SIGHUP], ignoring: [SIGINT, SIGHUP], command: "/bin/sleep", arguments: ["30"]
+			)
+			XCTAssertEqual(kill(process.pid, signal), 0)
+			let result = try await ProcessTermination.waitForTermination(pid: process.pid, timeout: 3)
+			closeHandles(process)
+			XCTAssertEqual(result.exitCode, 128 + signal, "signal \(signal)")
+			XCTAssertFalse(result.timedOut, "signal \(signal) did not end the child")
+		}
+	}
+
+	/// The child itself reports an empty blocked mask and default
+	/// dispositions for the signals the parent ignored.
+	func testChildReportsEmptySignalMaskAndDefaultDispositions() throws {
+		let perl = "/usr/bin/perl"
+		try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: perl), "needs \(perl) to read the child's own mask")
+		let script = """
+		use POSIX;
+		my $s = POSIX::SigSet->new; sigprocmask(SIG_BLOCK, undef, $s);
+		my @blocked = grep { $s->ismember($_) } 1..31;
+		my @ignored = grep { my $a = POSIX::SigAction->new; sigaction(eval "POSIX::SIG$_", undef, $a); $a->{HANDLER} eq "IGNORE" } qw(TERM INT HUP PIPE);
+		print "blocked=", join(",", @blocked), " ignored=", join(",", @ignored);
+		"""
+		let process = try spawnUnderParentSignalState(
+			blocking: [SIGTERM, SIGINT, SIGHUP, SIGPIPE], ignoring: [SIGTERM, SIGINT, SIGHUP, SIGPIPE],
+			command: perl, arguments: ["-e", script]
+		)
+		defer { closeHandles(process) }
+		let report = String(decoding: process.stdout.readDataToEndOfFile(), as: UTF8.self)
+		var status: Int32 = 0
+		_ = Darwin.waitpid(process.pid, &status, 0)
+		XCTAssertEqual(report, "blocked= ignored=")
 	}
 
 	// MARK: Reap latency (review MT-01)
@@ -261,9 +358,7 @@ final class ProcessLifecycleTests: XCTestCase {
 
 	/// The termination grace waits must also wake on the exit, not on the
 	/// next 50 ms poll. A zero SIGTERM grace goes straight to SIGKILL, so
-	/// the measured time is the SIGKILL wait alone. (SIGKILL rather than
-	/// SIGTERM because a child spawned from a test's worker thread inherits
-	/// its blocked SIGTERM; see the remediation report.)
+	/// the measured time is the SIGKILL wait alone.
 	func testTerminateAndReapWakesOnExitAfterSignal() async throws {
 		var samples: [TimeInterval] = []
 		for _ in 0..<7 {
@@ -280,7 +375,8 @@ final class ProcessLifecycleTests: XCTestCase {
 			)
 			samples.append(ProcessInfo.processInfo.systemUptime - start)
 			closeHandles(process)
-			XCTAssertEqual(exitCode, 128 + SIGKILL)
+			// SIGTERM goes out first and usually ends `sleep` before SIGKILL does.
+			XCTAssertTrue([128 + SIGTERM, 128 + SIGKILL].contains(exitCode), "exit code \(exitCode)")
 		}
 		XCTAssertLessThan(median(samples), 0.040, "signal-to-reap samples \(samples.map { Int($0 * 1000) }) ms")
 	}
