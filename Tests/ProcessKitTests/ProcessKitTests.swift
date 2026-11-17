@@ -357,8 +357,9 @@ final class ProcessLifecycleTests: XCTestCase {
 	}
 
 	/// The termination grace waits must also wake on the exit, not on the
-	/// next 50 ms poll. A zero SIGTERM grace goes straight to SIGKILL, so
-	/// the measured time is the SIGKILL wait alone.
+	/// next 50 ms poll. With a zero SIGTERM grace, SIGKILL follows SIGTERM at
+	/// once; `sleep` usually dies of the SIGTERM before the SIGKILL lands,
+	/// so either signal may end it, and the measured time is signal-to-reap.
 	func testTerminateAndReapWakesOnExitAfterSignal() async throws {
 		var samples: [TimeInterval] = []
 		for _ in 0..<7 {
@@ -481,6 +482,36 @@ final class ProcessLifecycleTests: XCTestCase {
 		let report = ready == 1 ? String(decoding: process.stdout.availableData, as: UTF8.self) : ""
 		XCTAssertEqual(report, "", "terminateAndReap signalled pid \(notAChild), which is not its unreaped child")
 		XCTAssertEqual(kill(notAChild, 0), 0)
+	}
+
+	/// An infinite or huge timeout or grace means "no deadline": converting
+	/// the time left to whole nanoseconds must saturate, not trap.
+	func testInfiniteAndHugeTimeoutsAndGracesDoNotTrap() async throws {
+		for timeout in [TimeInterval.infinity, 1e12, 1e300] {
+			let process = try ProcessLauncher.spawn(
+				command: "/usr/bin/true",
+				arguments: [],
+				environment: ProcessInfo.processInfo.environment,
+				workingDirectory: nil
+			)
+			let result = try await ProcessTermination.waitForTermination(pid: process.pid, timeout: timeout)
+			closeHandles(process)
+			XCTAssertEqual(result.exitCode, 0, "timeout \(timeout)")
+			XCTAssertFalse(result.timedOut, "timeout \(timeout)")
+		}
+
+		let process = try ProcessLauncher.spawn(
+			command: "/bin/sleep",
+			arguments: ["30"],
+			environment: ProcessInfo.processInfo.environment,
+			workingDirectory: nil
+		)
+		defer { closeHandles(process) }
+		let exitCode = await ProcessTermination.terminateAndReap(
+			pid: process.pid,
+			policy: ProcessTerminationPolicy(sigtermGracePeriod: .seconds(1e12), sigkillGracePeriod: .seconds(1e12))
+		)
+		XCTAssertEqual(exitCode, 128 + SIGTERM)
 	}
 
 	func testStdoutDescriptorReportsEOFAfterChildExitAndClose() throws {

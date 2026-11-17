@@ -141,11 +141,15 @@ public enum ProcessTermination {
 		timer.cancel()
 	}
 
+	/// Whole nanoseconds left until `deadline`: 0 once it has passed (or is
+	/// NaN), and `UInt64.max` for a deadline too far away to express, which
+	/// includes an infinite timeout or grace.
 	@inline(__always)
 	private static func nanoseconds(until deadline: TimeInterval) -> UInt64 {
-		let remaining = deadline - ProcessInfo.processInfo.systemUptime
+		let remaining = (deadline - ProcessInfo.processInfo.systemUptime) * 1_000_000_000
 		guard remaining > 0 else { return 0 }
-		return UInt64(remaining * 1_000_000_000)
+		guard remaining < 18_446_744_073_709_551_616.0 else { return .max } // 2^64; also catches +infinity
+		return UInt64(remaining)
 	}
 
 	/// Whether `pid` is a child of this process that has not been reaped yet

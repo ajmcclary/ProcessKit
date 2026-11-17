@@ -144,8 +144,9 @@ public enum ProcessLauncher {
 		}
 		// ...and with no signal blocked. `posix_spawn` otherwise copies the
 		// calling thread's mask, and Swift-concurrency and GCD worker threads
-		// block SIGTERM, SIGINT and SIGHUP: a child spawned from one ignored
-		// every SIGTERM and was only ever ended by SIGKILL after the grace.
+		// block most asynchronous signals (SIGTERM, SIGINT and SIGHUP among
+		// them): a child spawned from one ignored every SIGTERM and was only
+		// ever ended by SIGKILL after the grace.
 		var emptyMask = sigset_t()
 		sigemptyset(&emptyMask)
 
@@ -166,12 +167,6 @@ public enum ProcessLauncher {
 			throw ProcessLauncherError.spawnAttributesFailed(operation: "setsigdefault", errno: setSigDefaultResult)
 		}
 
-		// The child leads a new process group (pgid == pid) so
-		// `ProcessTermination` can signal grandchildren that inherited its
-		// pipes. CLOEXEC_DEFAULT closes every descriptor the file actions
-		// above do not set up: our own pipe ends are FD_CLOEXEC only after
-		// `fcntl`, so without it a concurrent spawn on another thread could
-		// inherit them and hold the other child's stdin/stdout open.
 		let setSigMaskResult = posix_spawnattr_setsigmask(&attributes, &emptyMask)
 		if setSigMaskResult != 0 {
 			closePipe(&stdinPipe)
@@ -180,6 +175,12 @@ public enum ProcessLauncher {
 			throw ProcessLauncherError.spawnAttributesFailed(operation: "setsigmask", errno: setSigMaskResult)
 		}
 
+		// The child leads a new process group (pgid == pid) so
+		// `ProcessTermination` can signal grandchildren that inherited its
+		// pipes. CLOEXEC_DEFAULT closes every descriptor the file actions
+		// above do not set up: our own pipe ends are FD_CLOEXEC only after
+		// `fcntl`, so without it a concurrent spawn on another thread could
+		// inherit them and hold the other child's stdin/stdout open.
 		let setPGroupResult = posix_spawnattr_setpgroup(&attributes, 0)
 		if setPGroupResult != 0 {
 			closePipe(&stdinPipe)

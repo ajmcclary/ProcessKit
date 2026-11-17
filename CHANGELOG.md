@@ -23,9 +23,11 @@ No public API changes.
   `POSIX_SPAWN_SETSIGMASK` with an empty mask, and resets SIGTERM, SIGINT,
   SIGHUP, SIGQUIT and SIGCHLD (as well as SIGPIPE) to their default
   dispositions. `posix_spawn` used to copy the spawning thread's mask, and
-  Swift-concurrency and GCD worker threads block SIGTERM, SIGINT and
-  SIGHUP, so a child spawned from one ignored the SIGTERM of every
-  termination and was SIGKILLed after the full grace period. Such children
+  Swift-concurrency and GCD worker threads block most asynchronous signals
+  (20 on macOS 27, among them SIGTERM, SIGINT, SIGHUP, SIGQUIT, SIGCHLD,
+  SIGALRM, SIGWINCH, SIGUSR1 and SIGUSR2), so a child spawned from one
+  ignored the SIGTERM of every termination and was SIGKILLed after the
+  full grace period. All of those signals now reach such children. Such children
   now receive SIGTERM and can shut down cleanly; a termination of a child
   that honours SIGTERM ends with exit code 143 (128 + SIGTERM) instead of
   137 (128 + SIGKILL), and no longer waits out the SIGTERM grace.
